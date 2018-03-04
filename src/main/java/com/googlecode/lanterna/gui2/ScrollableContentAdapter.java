@@ -193,14 +193,13 @@ final class ScrollableContentAdapter implements ScrollController {
             return Rectangle.EMPTY;
         }
 
-        final Container parent = component.getParent();
         final ScrollViewer sv = getScrollOwner();
 
         if (sv == null) {
             return Rectangle.EMPTY;
         }
 
-        final TerminalPosition relativeOffset = component.toAncestor(parent, TerminalPosition.TOP_LEFT_CORNER);
+        final TerminalPosition relativeOffset = component.toAncestor(sv, TerminalPosition.TOP_LEFT_CORNER);
 
         Rectangle rectangle = targetRectangle;
 
@@ -221,7 +220,7 @@ final class ScrollableContentAdapter implements ScrollController {
             getViewportHeight()
         );
 
-        rectangle.offset(viewport.getPosition());
+        rectangle = rectangle.offset(viewport.getPosition());
 
         //
         // Compute the offsets required to minimally scroll the child maximally into view:
@@ -356,7 +355,7 @@ final class ScrollableContentAdapter implements ScrollController {
 
         final ScrollData d = scrollData;
 
-        component.setPosition(d.componentPosition);
+        component.setPosition(d.graphicsOffset);
         component.draw(g.newTextGraphics(d.graphicsOffset, d.graphicsSize));
     }
 
@@ -397,12 +396,10 @@ final class ScrollableContentAdapter implements ScrollController {
         if (isScrollClient()) {
             d.graphicsOffset = new TerminalPosition(-d.computedHorizontalOffset, -d.computedVerticalOffset);
             d.graphicsSize = new TerminalSize(d.extentWidth, d.extentHeight);
-            d.componentPosition = d.graphicsOffset.withRelative(1, 1);
         }
         else {
             d.graphicsOffset = TerminalPosition.TOP_LEFT_CORNER;
             d.graphicsSize = d.viewport;
-            d.componentPosition = TerminalPosition.OFFSET_1x1;
         }
 
         if (!valid) {
@@ -479,8 +476,6 @@ final class ScrollableContentAdapter implements ScrollController {
 
         TerminalSize viewport;
         TerminalPosition offset;
-
-        TerminalPosition componentPosition;
 
         TerminalPosition graphicsOffset;
         TerminalSize graphicsSize;

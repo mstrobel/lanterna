@@ -29,7 +29,7 @@ public final class Rectangle {
     }
 
     public static Rectangle of(final TerminalSize size) {
-        return new Rectangle(TerminalPosition.OFFSET_1x1, size);
+        return new Rectangle(TerminalPosition.TOP_LEFT_CORNER, size);
     }
 
     public static Rectangle of(final int x, final int y, final int width, final int height) {
