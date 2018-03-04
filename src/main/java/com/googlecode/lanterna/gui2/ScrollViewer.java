@@ -15,7 +15,7 @@ import static java.lang.Math.max;
 
 public class ScrollViewer
     extends AbstractComponent<ScrollViewer>
-    implements Composite, Container, ScrollOwner/*, Interactable*/ {
+    implements Composite, Container, ScrollOwner {
 
     private final ScrollBar horizontalScrollBar;
     private final ScrollBar verticalScrollBar;
@@ -469,8 +469,6 @@ public class ScrollViewer
 
     // <editor-fold defaultstate="collapsed" desc="Layout">
 
-    private TerminalSize desiredSize;
-
     private boolean isLayoutInProgress;
     private boolean isLayoutInvalidatedFromRender;
     private boolean isRenderInProgress;
@@ -481,14 +479,14 @@ public class ScrollViewer
 
     @Override
     public void invalidate() {
-        desiredSize = null;
-
         if (isRenderInProgress) {
+            if (!isLayoutInvalidatedFromRender) {
+                ensureLayoutUpdater();
+            }
             isLayoutInvalidatedFromRender = true;
         }
 
         setPreferredSize(null);
-//        setSize(null);
 
         super.invalidate();
     }
@@ -564,6 +562,7 @@ public class ScrollViewer
         if (changed) {
             try {
                 onScrollChanged();
+                invalidate();
                 return;
             }
             finally {
@@ -726,10 +725,6 @@ public class ScrollViewer
             }
         }
 
-        final void enqueue(final CommandCode code) {
-            enqueue(code, 0);
-        }
-
         final void enqueue(final CommandCode code, final int parameter) {
             if (!optimizeCommand(code, parameter)) {
                 final int newWritePosition = (lastWritePosition + 1) % CAPACITY;
@@ -842,7 +837,6 @@ public class ScrollViewer
     }
 
     private final static class ScrollViewerRenderer implements ComponentRenderer<ScrollViewer> {
-        private TerminalSize totalSize;
         private TerminalSize desiredChildSize;
         private TerminalSize hBarSize;
         private TerminalSize vBarSize;
@@ -883,8 +877,6 @@ public class ScrollViewer
             finally {
                 sv.isLayoutInProgress = wasLayoutInProgress;
             }
-
-            totalSize = desiredSize;
 
             return desiredSize;
         }
@@ -928,7 +920,7 @@ public class ScrollViewer
                     );
                 }
 
-                sv.updateLayout();
+//                sv.updateLayout();
 
                 sv.horizontalScrollBar.setViewSize(sv.getViewportWidth());
                 sv.horizontalScrollBar.setScrollMaximum(sv.getExtentWidth());
@@ -1042,81 +1034,4 @@ public class ScrollViewer
     }
 
     // </editor-fold>
-
-//    // <editor-fold defaultstate="collapsed" desc="Interactable Implementation">
-//
-//    boolean ifFocused;
-//    boolean isEnabled;
-//
-//    @Override
-//    public TerminalPosition getCursorLocation() {
-//        return null;
-//    }
-//
-//    @Override
-//    public Interactable takeFocus() {
-//        if(!isEnabled()) {
-//            return self();
-//        }
-//
-//        final BasePane basePane = getBasePane();
-//
-//        if(basePane != null) {
-//            basePane.setFocusedInteractable(this);
-//        }
-//
-//        return self();
-//    }
-//
-//    @Override
-//    public void onEnterFocus(FocusChangeDirection direction, Interactable previouslyInFocus) {
-//        ifFocused = true;
-//    }
-//
-//    @Override
-//    public void onLeaveFocus(FocusChangeDirection direction, Interactable nextInFocus) {
-//        ifFocused = false;
-//    }
-//
-//    @Override
-//    public boolean isFocused() {
-//        return ifFocused;
-//    }
-//
-//    @Override
-//    public Interactable setInputFilter(InputFilter inputFilter) {
-//        return this;
-//    }
-//
-//    @Override
-//    public InputFilter getInputFilter() {
-//        return null;
-//    }
-//
-//    @Override
-//    public Interactable setEnabled(boolean enabled) {
-//        isEnabled = enabled;
-//
-//        if (!enabled && isFocused()) {
-//            final BasePane basePane = getBasePane();
-//
-//            if (basePane != null) {
-//                basePane.setFocusedInteractable(null);
-//            }
-//        }
-//
-//        return self();
-//    }
-//
-//    @Override
-//    public boolean isEnabled() {
-//        return isEnabled;
-//    }
-//
-//    @Override
-//    public boolean isFocusable() {
-//        return false;
-//    }
-//
-//    // </editor-fold>
 }
