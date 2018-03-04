@@ -1,6 +1,6 @@
 package com.googlecode.lanterna.gui2;
 
-public interface Scrollable {
+public interface ScrollController {
     int INFINITY = Integer.MAX_VALUE;
 
     void lineUp();
@@ -30,6 +30,8 @@ public interface Scrollable {
     int getExtentWidth();
     int getExtentHeight();
 
-    ScrollOwner getScrollOwner();
-    void setScrollOwner(ScrollOwner owner);
+    Rectangle makeVisible(Component component, Rectangle targetRectangle);
+
+    ScrollViewer getScrollOwner();
+    void setScrollOwner(ScrollViewer owner);
 }

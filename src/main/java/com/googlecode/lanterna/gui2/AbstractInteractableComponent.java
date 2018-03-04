@@ -20,6 +20,7 @@ package com.googlecode.lanterna.gui2;
 
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.input.KeyStroke;
+import com.googlecode.lanterna.input.KeyType;
 
 /**
  * Default implementation of Interactable that extends from AbstractComponent. If you want to write your own component
@@ -156,24 +157,30 @@ public abstract class AbstractInteractableComponent<T extends AbstractInteractab
      */
     protected Result handleKeyStroke(KeyStroke keyStroke) {
         // Skip the keystroke if ctrl, alt or shift was down
-        if(!keyStroke.isAltDown() && !keyStroke.isCtrlDown() && !keyStroke.isShiftDown()) {
-            switch(keyStroke.getKeyType()) {
-                case ArrowDown:
-                    return Result.MOVE_FOCUS_DOWN;
-                case ArrowLeft:
-                    return Result.MOVE_FOCUS_LEFT;
-                case ArrowRight:
-                    return Result.MOVE_FOCUS_RIGHT;
-                case ArrowUp:
-                    return Result.MOVE_FOCUS_UP;
-                case Tab:
-                    return Result.MOVE_FOCUS_NEXT;
-                case ReverseTab:
-                    return Result.MOVE_FOCUS_PREVIOUS;
-                case MouseEvent:
-                    getBasePane().setFocusedInteractable(this);
-                    return Result.HANDLED;
-                default:
+        if(!keyStroke.isAltDown() && !keyStroke.isCtrlDown()) {
+            if(!keyStroke.isShiftDown()) {
+                switch(keyStroke.getKeyType()) {
+                    case ArrowDown:
+                        return Result.MOVE_FOCUS_DOWN;
+                    case ArrowLeft:
+                        return Result.MOVE_FOCUS_LEFT;
+                    case ArrowRight:
+                        return Result.MOVE_FOCUS_RIGHT;
+                    case ArrowUp:
+                        return Result.MOVE_FOCUS_UP;
+                    case Tab:
+                        return Result.MOVE_FOCUS_NEXT;
+                    case ReverseTab:
+                        return Result.MOVE_FOCUS_PREVIOUS;
+                    case MouseEvent:
+                        getBasePane().setFocusedInteractable(this);
+                        return Result.HANDLED;
+                    default:
+                }
+            }
+            // On Mac at least, Shift+Tab is ReverseTab, and isShiftDown() always reports `true`.
+            if (keyStroke.getKeyType() == KeyType.ReverseTab) {
+                return Result.MOVE_FOCUS_PREVIOUS;
             }
         }
         return Result.UNHANDLED;

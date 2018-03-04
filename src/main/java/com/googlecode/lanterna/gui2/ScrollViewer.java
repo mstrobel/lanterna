@@ -15,7 +15,7 @@ import static java.lang.Math.max;
 
 public class ScrollViewer
     extends AbstractComponent<ScrollViewer>
-    implements Composite, Container, ScrollOwner {
+    implements Composite, Container {
 
     private final ScrollBar horizontalScrollBar;
     private final ScrollBar verticalScrollBar;
@@ -23,7 +23,7 @@ public class ScrollViewer
 
     private Component component;
     private ComponentRenderer<ScrollViewer> renderer;
-    private Scrollable scrollController;
+    private ScrollController scrollController;
     private ScrollBarPolicy horizontalScrollBarPolicy = ScrollBarPolicy.AUTO;
     private ScrollBarPolicy verticalScrollBarPolicy = ScrollBarPolicy.AUTO;
 
@@ -142,7 +142,19 @@ public class ScrollViewer
 
     @Override
     public boolean handleInput(final KeyStroke key) {
-        return scrollInDirection(key);
+        if (key.isAltDown()) {
+            return scrollInDirection(key);
+        }
+
+        final Component c = component;
+
+        if (c instanceof Interactable) {
+            return ((Interactable) c).handleInput(key) != Interactable.Result.UNHANDLED ||
+                   scrollInDirection(key);
+        }
+
+        return c instanceof Container &&
+               (((Container) c).handleInput(key) || scrollInDirection(key));
     }
 
     @Override
@@ -187,11 +199,11 @@ public class ScrollViewer
 
     private boolean scrollInDirection(final KeyStroke key) {
         final boolean isControlDown = key.isCtrlDown();
-        final boolean isAltDown = key.isAltDown();
-
-        if (isAltDown) {
-            return false;
-        }
+//        final boolean isAltDown = key.isAltDown();
+//
+//        if (isAltDown) {
+//            return false;
+//        }
 
         // @formatter:off
         switch (key.getKeyType()) {
@@ -265,29 +277,29 @@ public class ScrollViewer
     }
 
     public void scrollToLeftEnd() {
-        enqueueCommand(CommandCode.SET_OFFSET_H, -Scrollable.INFINITY);
+        enqueueCommand(CommandCode.SET_OFFSET_H, -ScrollController.INFINITY);
     }
 
     public void scrollToRightEnd() {
-        enqueueCommand(CommandCode.SET_OFFSET_H, Scrollable.INFINITY);
+        enqueueCommand(CommandCode.SET_OFFSET_H, ScrollController.INFINITY);
     }
 
     public void scrollToHome() {
-        enqueueCommand(CommandCode.SET_OFFSET_H, -Scrollable.INFINITY);
-        enqueueCommand(CommandCode.SET_OFFSET_V, -Scrollable.INFINITY);
+        enqueueCommand(CommandCode.SET_OFFSET_H, -ScrollController.INFINITY);
+        enqueueCommand(CommandCode.SET_OFFSET_V, -ScrollController.INFINITY);
     }
 
     public void scrollToEnd() {
-        enqueueCommand(CommandCode.SET_OFFSET_H, Scrollable.INFINITY);
-        enqueueCommand(CommandCode.SET_OFFSET_V, Scrollable.INFINITY);
+        enqueueCommand(CommandCode.SET_OFFSET_H, ScrollController.INFINITY);
+        enqueueCommand(CommandCode.SET_OFFSET_V, ScrollController.INFINITY);
     }
 
     public void scrollToTop() {
-        enqueueCommand(CommandCode.SET_OFFSET_V, -Scrollable.INFINITY);
+        enqueueCommand(CommandCode.SET_OFFSET_V, -ScrollController.INFINITY);
     }
 
     public void scrollToBottom() {
-        enqueueCommand(CommandCode.SET_OFFSET_V, Scrollable.INFINITY);
+        enqueueCommand(CommandCode.SET_OFFSET_V, ScrollController.INFINITY);
     }
 
     public void scrollToHorizontalOffset(final int offset) {
@@ -296,6 +308,82 @@ public class ScrollViewer
 
     public void scrollToVerticalOffset(final int offset) {
         enqueueCommand(CommandCode.SET_OFFSET_V, validateInputOffset(offset));
+    }
+
+    public void makeVisible(final Component component, final Rectangle targetRectangle) {
+        enqueueCommand(new MakeVisibleParameters(component, targetRectangle));
+    }
+
+    private void makeVisible0(final Component component, final Rectangle targetRectangle) {
+        final Container container = component != null ? component.getParent() : null;
+
+        if (component == null ||
+            container == null ||
+            targetRectangle == null ||
+            container != component && !component.hasParent(container) ||
+            container != this && !container.hasParent(this)) {
+
+            return;
+        }
+
+        Rectangle rectangle = targetRectangle;
+
+        if (rectangle.isEmpty()) {
+            TerminalSize size = component.getSize();
+
+            if (size == null) {
+                size = component.getPreferredSize();
+            }
+
+            if (size != null) {
+                rectangle = Rectangle.of(size);
+            }
+            else {
+                rectangle = Rectangle.EMPTY;
+            }
+        }
+
+        final ScrollController s = scrollController;
+
+        Rectangle newRectangle;
+
+        if (s instanceof ScrollableContentAdapter) {
+            newRectangle = ((ScrollableContentAdapter) s).makeVisible(component, rectangle, false);
+        }
+        else {
+            newRectangle = s.makeVisible(component, rectangle);
+        }
+
+        if (!newRectangle.isEmpty()) {
+            final TerminalPosition offset = container.toAncestor(this, newRectangle.getPosition());
+
+            if (offset != null) {
+                newRectangle = newRectangle.offset(offset);
+            }
+        }
+
+        bringIntoView(newRectangle);
+    }
+
+    static ScrollViewer findScrollViewer(final Component component) {
+        Component current = component != null ? component.getParent() : null;
+
+        while (current != null) {
+            if (current instanceof ScrollViewer) {
+                return (ScrollViewer) current;
+            }
+            current = current.getParent();
+        }
+
+        return null;
+    }
+
+    final void bringIntoView(final Rectangle rectangle) {
+        final ScrollViewer svAncestor = findScrollViewer(this);
+
+        if (svAncestor != null) {
+            svAncestor.makeVisible(this, rectangle);
+        }
     }
 
     // </editor-fold>
@@ -400,9 +488,8 @@ public class ScrollViewer
 
     // <editor-fold defaultstate="collapsed" desc="ScrollOwner Implementation">
 
-    @Override
     public void invalidateScrollInfo() {
-        final Scrollable s = scrollController;
+        final ScrollController s = scrollController;
 
         if (s == null) {
             return;
@@ -450,8 +537,7 @@ public class ScrollViewer
         }
     }
 
-    @Override
-    public void setScrollController(final Scrollable controller) {
+    public void setScrollController(final ScrollController controller) {
         scrollController = controller;
 
         if (controller != null) {
@@ -461,7 +547,7 @@ public class ScrollViewer
         }
     }
 
-    public Scrollable getScrollController() {
+    public ScrollController getScrollController() {
         return scrollController;
     }
 
@@ -522,7 +608,7 @@ public class ScrollViewer
 
         boolean changed = false;
 
-        final Scrollable s = getScrollController();
+        final ScrollController s = getScrollController();
 
         // Go through scrolling properties and update any inconsistent values.
 
@@ -608,11 +694,17 @@ public class ScrollViewer
     private boolean isLayoutUpdaterScheduled;
 
     private void enqueueCommand(final CommandCode code) {
-        enqueueCommand(code, 0);
+        ensureQueue().enqueue(code, 0, null);
+        ensureLayoutUpdater();
+    }
+
+    private void enqueueCommand(final MakeVisibleParameters parameters) {
+        ensureQueue().enqueue(CommandCode.MAKE_VISIBLE, 0, parameters);
+        ensureLayoutUpdater();
     }
 
     private void enqueueCommand(final CommandCode code, final int parameter) {
-        ensureQueue().enqueue(code, parameter);
+        ensureQueue().enqueue(code, parameter, null);
         ensureLayoutUpdater();
     }
 
@@ -694,7 +786,8 @@ public class ScrollViewer
         PAGE_LEFT,
         PAGE_RIGHT,
         SET_OFFSET_H,
-        SET_OFFSET_V
+        SET_OFFSET_V,
+        MAKE_VISIBLE
     }
 
     private final static class Command {
@@ -702,10 +795,21 @@ public class ScrollViewer
 
         CommandCode code;
         int parameter;
+        MakeVisibleParameters makeVisibleParameter;
 
         Command(final CommandCode code, final int parameter) {
             this.code = code;
             this.parameter = parameter;
+        }
+    }
+
+    private final static class MakeVisibleParameters {
+        Component child;
+        Rectangle targetRectangle;
+
+        MakeVisibleParameters(final Component child, final Rectangle targetRectangle) {
+            this.child = child;
+            this.targetRectangle = targetRectangle;
         }
     }
 
@@ -725,7 +829,7 @@ public class ScrollViewer
             }
         }
 
-        final void enqueue(final CommandCode code, final int parameter) {
+        final void enqueue(final CommandCode code, final int parameter, final MakeVisibleParameters mvp) {
             if (!optimizeCommand(code, parameter)) {
                 final int newWritePosition = (lastWritePosition + 1) % CAPACITY;
 
@@ -737,6 +841,7 @@ public class ScrollViewer
 
                 command.code = code;
                 command.parameter = parameter;
+                command.makeVisibleParameter = mvp;
 
                 lastWritePosition = newWritePosition;
             }
@@ -773,7 +878,7 @@ public class ScrollViewer
     }
 
     final boolean executeNextCommand() {
-        final Scrollable s = this.scrollController;
+        final ScrollController s = this.scrollController;
 
         if (s == null) {
             return false;
@@ -781,6 +886,9 @@ public class ScrollViewer
 
         final CommandQueue q = queue;
         final Command c = q != null ? q.fetch() : Command.INVALID;
+        final MakeVisibleParameters mvp = c.makeVisibleParameter;
+
+        c.makeVisibleParameter = null; // Release object for GC
 
         if (c.code == CommandCode.INVALID) {
             return false;
@@ -788,17 +896,19 @@ public class ScrollViewer
 
         // @formatter:off
         switch (c.code) {
-            case LINE_UP:       s.lineUp();                         break;
-            case LINE_DOWN:     s.lineDown();                       break;
-            case LINE_LEFT:     s.lineLeft();                       break;
-            case LINE_RIGHT:    s.lineRight();                      break;
-            case PAGE_UP:       s.pageUp();                         break;
-            case PAGE_DOWN:     s.pageDown();                       break;
-            case PAGE_LEFT:     s.pageLeft();                       break;
-            case PAGE_RIGHT:    s.pageRight();                      break;
+            case LINE_UP:       s.lineUp();                                     break;
+            case LINE_DOWN:     s.lineDown();                                   break;
+            case LINE_LEFT:     s.lineLeft();                                   break;
+            case LINE_RIGHT:    s.lineRight();                                  break;
+            case PAGE_UP:       s.pageUp();                                     break;
+            case PAGE_DOWN:     s.pageDown();                                   break;
+            case PAGE_LEFT:     s.pageLeft();                                   break;
+            case PAGE_RIGHT:    s.pageRight();                                  break;
 
-            case SET_OFFSET_H:  s.setHorizontalOffset(c.parameter); break;
-            case SET_OFFSET_V:  s.setVerticalOffset(c.parameter);   break;
+            case SET_OFFSET_H:  s.setHorizontalOffset(c.parameter);             break;
+            case SET_OFFSET_V:  s.setVerticalOffset(c.parameter);               break;
+
+            case MAKE_VISIBLE:  makeVisible0(mvp.child, mvp.targetRectangle);   break;
         }
         // @formatter:on
 
@@ -837,6 +947,7 @@ public class ScrollViewer
     }
 
     private final static class ScrollViewerRenderer implements ComponentRenderer<ScrollViewer> {
+        private boolean neverMeasured = true;
         private TerminalSize desiredChildSize;
         private TerminalSize hBarSize;
         private TerminalSize vBarSize;
@@ -878,11 +989,16 @@ public class ScrollViewer
                 sv.isLayoutInProgress = wasLayoutInProgress;
             }
 
+            neverMeasured = false;
             return desiredSize;
         }
 
         @Override
         public void drawComponent(final TextGUIGraphics g, final ScrollViewer sv) {
+            if (neverMeasured || sv.isInvalid()) {
+                getPreferredSize(sv);
+            }
+
             final boolean wasRenderInProgress = sv.isRenderInProgress;
 
             sv.isRenderInProgress = true;

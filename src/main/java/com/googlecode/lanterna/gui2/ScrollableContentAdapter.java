@@ -6,9 +6,9 @@ import com.googlecode.lanterna.TerminalSize;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 
-final class ScrollableContentAdapter implements Scrollable {
+final class ScrollableContentAdapter implements ScrollController {
     private Component adaptedComponent;
-    private Scrollable scrollController;
+    private ScrollController scrollController;
     private ScrollData scrollData;
     private boolean canContentControlScrolling;
 
@@ -167,14 +167,137 @@ final class ScrollableContentAdapter implements Scrollable {
     }
 
     @Override
-    public ScrollOwner getScrollOwner() {
+    public Rectangle makeVisible(final Component component, final Rectangle targetRectangle) {
+        return makeVisible(component, targetRectangle, true);
+    }
+
+    @Override
+    public ScrollViewer getScrollOwner() {
         return isScrollClient() ? ensureScrollData().scrollOwner : null;
     }
 
     @Override
-    public void setScrollOwner(final ScrollOwner owner) {
+    public void setScrollOwner(final ScrollViewer owner) {
         if (isScrollClient()) {
             ensureScrollData().scrollOwner = owner;
+        }
+    }
+
+    final Rectangle makeVisible(
+        final Component component,
+        final Rectangle targetRectangle,
+        final boolean throwOnError) {
+
+        // An empty rectangle has no size or position.  We can't meaningfully use it.
+        if (targetRectangle.isEmpty() || component == null) {
+            return Rectangle.EMPTY;
+        }
+
+        final Container parent = component.getParent();
+        final ScrollViewer sv = getScrollOwner();
+
+        if (sv == null) {
+            return Rectangle.EMPTY;
+        }
+
+        final TerminalPosition relativeOffset = component.toAncestor(parent, TerminalPosition.TOP_LEFT_CORNER);
+
+        Rectangle rectangle = targetRectangle;
+
+        rectangle = rectangle.offset(relativeOffset);
+
+        if (!isScrollClient() || (!throwOnError && rectangle.isEmpty())) {
+            return rectangle;
+        }
+
+        //
+        // Initialize the viewport:
+        //
+
+        Rectangle viewport = Rectangle.of(
+            getHorizontalOffset(),
+            getVerticalOffset(),
+            getViewportWidth(),
+            getViewportHeight()
+        );
+
+        rectangle.offset(viewport.getPosition());
+
+        //
+        // Compute the offsets required to minimally scroll the child maximally into view:
+        //
+
+        final int minX = computeScrollOffsetWithMinimalScroll(
+            viewport.getLeft(),
+            viewport.getRight(),
+            rectangle.getLeft(),
+            rectangle.getRight()
+        );
+
+        final int minY = computeScrollOffsetWithMinimalScroll(
+            viewport.getTop(),
+            viewport.getBottom(),
+            rectangle.getTop(),
+            rectangle.getBottom()
+        );
+
+        //
+        // We have computed the scrolling offsets; scroll to them:
+        //
+
+        setHorizontalOffset(minX);
+        setVerticalOffset(minY);
+
+        //
+        // Compute the visible rectangle of the child relative to the viewport, then return it:
+        //
+
+        viewport = viewport.offset(minX, minY);
+        rectangle = rectangle.intersection(viewport);
+
+        if (throwOnError || !rectangle.isEmpty()) {
+            rectangle = rectangle.offset(-viewport.getLeft(), -viewport.getTop());
+        }
+
+        return rectangle;
+    }
+
+    static int computeScrollOffsetWithMinimalScroll(
+        final int topView,
+        final int bottomView,
+        final int topChild,
+        final int bottomChild) {
+
+        //
+        // # CHILD POSITION       CHILD SIZE      SCROLL      REMEDY
+        // 1 Above viewport       <= viewport     Down        Align top edge of child & viewport.
+        // 2 Above viewport       > viewport      Down        Align bottom edge of child & viewport.
+        // 3 Below viewport       <= viewport     Up          Align bottom edge of child & viewport.
+        // 4 Below viewport       > viewport      Up          Align top edge of child & viewport.
+        // 5 Entirely within viewport             N/A         No scroll.
+        // 6 Spanning viewport                    N/A         No scroll.
+        //
+        // Note: "Above viewport" = childTop above viewportTop, childBottom above viewportBottom
+        //       "Below viewport" = childTop below viewportTop, childBottom below viewportBottom
+        //
+        // These child thus may overlap with the viewport, but will scroll the same direction.
+        //
+
+        final boolean isAbove = topChild < topView && bottomChild < bottomView;
+        final boolean isBelow = bottomChild > bottomView && topChild > topView;
+        final boolean isLarger = bottomChild - topChild > bottomView - topView;
+
+        if (isAbove && !isLarger || isBelow && isLarger) {
+            // Handle cases 1 & 4 described above.
+            return topChild;
+        }
+        else if (isAbove || isBelow) {
+            // Handle cases 2 & 3 described above.
+            return bottomChild - (bottomView - topView);
+        }
+        else {
+            // Handle cases: 5 & 6 above.
+            return topView;
         }
     }
 
@@ -294,11 +417,11 @@ final class ScrollableContentAdapter implements Scrollable {
         if (container instanceof ScrollViewer) {
             final ScrollViewer scrollContainer = (ScrollViewer) container;
 
-            Scrollable s = null;
+            ScrollController s = null;
 
             // If permitted, allow any scrollable content to control scrolling.
-            if (canContentControlScrolling && component instanceof Scrollable) {
-                s = (Scrollable) component;
+            if (canContentControlScrolling && component instanceof ScrollController) {
+                s = (ScrollController) component;
             }
 
             // If content isn't controlling scrolling, we must control it ourselves.
@@ -326,7 +449,7 @@ final class ScrollableContentAdapter implements Scrollable {
             // We're not in a valid scrolling scenario, so disconnect any existing
             // links and get ourselves into a totally unlinked state.
 
-            final ScrollOwner oldScrollOwner = scrollController.getScrollOwner();
+            final ScrollViewer oldScrollOwner = scrollController.getScrollOwner();
 
             if (oldScrollOwner != null) {
                 oldScrollOwner.setScrollController(null);
@@ -339,7 +462,7 @@ final class ScrollableContentAdapter implements Scrollable {
     }
 
     private static final class ScrollData {
-        ScrollOwner scrollOwner;
+        ScrollViewer scrollOwner;
 
         boolean canHorizontallyScroll;
         boolean canVerticallyScroll;
