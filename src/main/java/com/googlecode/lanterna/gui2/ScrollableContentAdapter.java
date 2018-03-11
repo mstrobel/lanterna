@@ -6,7 +6,7 @@ import com.googlecode.lanterna.TerminalSize;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 
-final class ScrollableContentAdapter implements ScrollController {
+public final class ScrollableContentAdapter implements ScrollController {
     private Component adaptedComponent;
     private ScrollController scrollController;
     private ScrollData scrollData;
@@ -188,12 +188,21 @@ final class ScrollableContentAdapter implements ScrollController {
         final Rectangle targetRectangle,
         final boolean throwOnError) {
 
+        return makeVisible(component, this, targetRectangle, throwOnError);
+    }
+
+    static Rectangle makeVisible(
+        final Component component,
+        final ScrollController controller,
+        final Rectangle targetRectangle,
+        final boolean throwOnError) {
+
         // An empty rectangle has no size or position.  We can't meaningfully use it.
-        if (targetRectangle.isEmpty() || component == null) {
+        if (targetRectangle.isEmpty() || component == null || controller == null) {
             return Rectangle.EMPTY;
         }
 
-        final ScrollViewer sv = getScrollOwner();
+        final ScrollViewer sv = controller.getScrollOwner();
 
         if (sv == null) {
             return Rectangle.EMPTY;
@@ -205,7 +214,7 @@ final class ScrollableContentAdapter implements ScrollController {
 
         rectangle = rectangle.offset(relativeOffset);
 
-        if (!isScrollClient() || (!throwOnError && rectangle.isEmpty())) {
+        if (!isScrollClient(controller) || (!throwOnError && rectangle.isEmpty())) {
             return rectangle;
         }
 
@@ -214,10 +223,10 @@ final class ScrollableContentAdapter implements ScrollController {
         //
 
         Rectangle viewport = Rectangle.of(
-            getHorizontalOffset(),
-            getVerticalOffset(),
-            getViewportWidth(),
-            getViewportHeight()
+            controller.getHorizontalOffset(),
+            controller.getVerticalOffset(),
+            controller.getViewportWidth(),
+            controller.getViewportHeight()
         );
 
         rectangle = rectangle.offset(viewport.getPosition());
@@ -244,8 +253,8 @@ final class ScrollableContentAdapter implements ScrollController {
         // We have computed the scrolling offsets; scroll to them:
         //
 
-        setHorizontalOffset(minX);
-        setVerticalOffset(minY);
+        controller.setHorizontalOffset(minX);
+        controller.setVerticalOffset(minY);
 
         //
         // Compute the visible rectangle of the child relative to the viewport, then return it:
@@ -302,20 +311,18 @@ final class ScrollableContentAdapter implements ScrollController {
 
     private ScrollData ensureScrollData() {
         final ScrollData scrollData = this.scrollData;
-        return scrollData != null ? scrollData : (this.scrollData = new ScrollData());
+        return scrollData != null ? scrollData : (this.scrollData = new ScrollData(this));
     }
 
     private boolean isScrollClient() {
         return scrollController == this;
     }
 
-    private int coerceOffset(final int offset, final int extent, final int viewport) {
+    private static int coerceOffset(final int offset, final int extent, final int viewport) {
         return max(0, min(offset, extent - viewport));
     }
 
-    private boolean coerceOffsets() {
-        final ScrollData d = scrollData;
-
+    private static boolean coerceOffsets(final ScrollData d) {
         final int computedHorizontalOffset = coerceOffset(
             d.horizontalOffset,
             d.extentWidth,
@@ -350,18 +357,15 @@ final class ScrollableContentAdapter implements ScrollController {
 
     final void draw(final TextGUIGraphics g, final TerminalSize extent) {
         final Component component = this.adaptedComponent;
+        final ScrollData d = ensureScrollData();
 
-        verifyScrollData(g.getSize(), extent);
-
-        final ScrollData d = scrollData;
+        verifyScrollData(d, g.getSize(), extent);
 
         component.setPosition(d.graphicsOffset);
         component.draw(g.newTextGraphics(d.graphicsOffset, d.graphicsSize));
     }
 
-    private void verifyScrollData(final TerminalSize viewport, final TerminalSize extent) {
-        final ScrollData d = this.scrollData;
-
+    static void verifyScrollData(final ScrollData d, final TerminalSize viewport, final TerminalSize extent) {
         boolean valid;
 
         int coercedViewportWidth = viewport.getColumns();
@@ -381,7 +385,7 @@ final class ScrollableContentAdapter implements ScrollController {
         d.viewportWidth = coercedViewportWidth;
         d.viewportHeight = coercedViewportHeight;
 
-        valid &= coerceOffsets();
+        valid &= coerceOffsets(d);
 
         if (d.viewport == null ||
             d.viewport.getColumns() != coercedViewportWidth ||
@@ -393,7 +397,7 @@ final class ScrollableContentAdapter implements ScrollController {
         d.extentWidth = extent.getColumns();
         d.extentHeight = extent.getRows();
 
-        if (isScrollClient()) {
+        if (isScrollClient(d.owner)) {
             d.graphicsOffset = new TerminalPosition(-d.computedHorizontalOffset, -d.computedVerticalOffset);
             d.graphicsSize = new TerminalSize(d.extentWidth, d.extentHeight);
         }
@@ -402,9 +406,14 @@ final class ScrollableContentAdapter implements ScrollController {
             d.graphicsSize = d.viewport;
         }
 
-        if (!valid) {
+        if (!valid && d.scrollOwner != null) {
             d.scrollOwner.invalidateScrollInfo();
         }
+    }
+
+    static boolean isScrollClient(final ScrollController controller) {
+        return controller instanceof ScrollableContentAdapter &&
+               ((ScrollableContentAdapter) controller).isScrollClient();
     }
 
     private void connectScrollableComponent() {
@@ -458,7 +467,9 @@ final class ScrollableContentAdapter implements ScrollController {
         }
     }
 
-    private static final class ScrollData {
+    final static class ScrollData {
+        final ScrollController owner;
+
         ScrollViewer scrollOwner;
 
         boolean canHorizontallyScroll;
@@ -479,5 +490,12 @@ final class ScrollableContentAdapter implements ScrollController {
 
         TerminalPosition graphicsOffset;
         TerminalSize graphicsSize;
+
+        ScrollData(final ScrollController owner) {
+            if (owner == null) {
+                throw new IllegalArgumentException("Owner cannot be null.");
+            }
+            this.owner = owner;
+        }
     }
 }

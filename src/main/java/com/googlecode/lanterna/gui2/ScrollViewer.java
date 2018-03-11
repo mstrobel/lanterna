@@ -164,8 +164,8 @@ public class ScrollViewer
         if (component instanceof Container) {
             ((Container) getComponent()).updateLookupMap(map);
         }
-        else if (getComponent() instanceof Interactable) {
-            map.add((Interactable) getComponent());
+        else if (component instanceof Interactable) {
+            map.add((Interactable) component);
         }
     }
 
@@ -572,7 +572,7 @@ public class ScrollViewer
             isLayoutInvalidatedFromRender = true;
         }
 
-        setPreferredSize(null);
+//        setPreferredSize(null);
 
         super.invalidate();
     }
